@@ -12,18 +12,18 @@ func randRange(min, max int) int {
 
 // RandomDuration returns a random duration between 150 and 350 milliseconds
 func RandomDuration() time.Duration {
-	return time.Duration(randRange(3000, 5000)) * time.Millisecond
+	return time.Duration(randRange(5000, 7000)) * time.Millisecond
 }
 
 // RequestVote struct
 type RequestVote struct {
 	Term        int
 	CandidateID int
-	ReplyChan   chan RequestVoteReplyC
+	ReplyChan   chan RequestVoteReply
 }
 
-// RequestVoteReplyC struct
-type RequestVoteReplyC struct {
+// RequestVoteReply struct
+type RequestVoteReply struct {
 	Term        int
 	VoteGranted bool
 }
@@ -67,16 +67,20 @@ func MakeCluster(nodeCount int) *Cluster {
 		for {
 			select {
 			case m := <-c._clusterVoteC:
-				for k, v := range c.NodeChanMap {
-					if m.nodeID != k {
-						go func() { v.RequestVoteC <- m.msg }()
-					}
+				for _, v := range c.NodeChanMap {
+					go func(nc NodeChan) { nc.RequestVoteC <- m.msg }(v)
 				}
+			default:
+			}
+		}
+	}(c)
+
+	go func(cluster *Cluster) {
+		for {
+			select {
 			case m := <-c._clusterAppendEntriesC:
-				for k, v := range c.NodeChanMap {
-					if m.nodeID != k {
-						go func() { v.AppendEntriesC <- m.msg }()
-					}
+				for _, v := range c.NodeChanMap {
+					go func(nc NodeChan) { nc.AppendEntriesC <- m.msg }(v)
 				}
 			default:
 			}
