@@ -58,7 +58,7 @@ func node(id int, appendEntriesC chan AppendEntriesRPC, requestVoteC chan Reques
 	for {
 		select {
 		case msg := <-appendEntriesC:
-			if msg.Term >= self.CurrentTerm {
+			if msg.Term > self.CurrentTerm {
 				self.CurrentTerm = msg.Term
 				if self.State != follower {
 					self.State = follower
@@ -68,15 +68,16 @@ func node(id int, appendEntriesC chan AppendEntriesRPC, requestVoteC chan Reques
 				// fmt.Printf("Heartbeat from leader '%v' with term %v\n", msg.LeaderID, msg.Term)
 			}
 		case msg := <-requestVoteC:
+			fmt.Printf("Node '%v' got message from node %v\n", self.ID, msg.CandidateID)
 			if msg.Term > self.CurrentTerm {
 				self.CurrentTerm = msg.Term
 				self.State = follower
 				self.VotedFor = msg.CandidateID
 				electionTimer.Reset(utils.RandomDuration())
 				fmt.Printf("Node '%v' became FOLLOWER with term %v and voted for Node '%v'\n", self.ID, self.CurrentTerm, msg.CandidateID)
-				go func() { msg.ReplyChan <- RequestVoteRPCReply{self.CurrentTerm, true} }()
+				go func(term int) { msg.ReplyChan <- RequestVoteRPCReply{term, true} }(self.CurrentTerm)
 			} else {
-				go func() { msg.ReplyChan <- RequestVoteRPCReply{self.CurrentTerm, false} }()
+				go func(term int) { msg.ReplyChan <- RequestVoteRPCReply{term, false} }(self.CurrentTerm)
 			}
 		case response := <-voteReplyC:
 			if response.Term > self.CurrentTerm {
@@ -91,13 +92,13 @@ func node(id int, appendEntriesC chan AppendEntriesRPC, requestVoteC chan Reques
 				if votes >= int(math.Floor(float64(peerCount)/2.0)+1.0) {
 					self.State = leader
 					electionTimer.Stop()
-					paceMaker := time.NewTicker(time.Second * 1)
+					paceMaker := time.NewTicker(time.Millisecond * 500)
 					fmt.Printf("Node '%v' became LEADER with term %v\n", self.ID, self.CurrentTerm)
 					// boom := 0
 					for _ = range paceMaker.C {
 						fmt.Printf("❤︎ ")
 						// if boom > -1 {
-						go func() { appendEntriesC <- AppendEntriesRPC{self.CurrentTerm, self.ID} }()
+						go func(term, id int) { appendEntriesC <- AppendEntriesRPC{term, id} }(self.CurrentTerm, self.ID)
 						// boom = boom + 1
 						// } else {
 						// 	fmt.Println("Leader EXPLODEDE!!!")
@@ -114,7 +115,10 @@ func node(id int, appendEntriesC chan AppendEntriesRPC, requestVoteC chan Reques
 			self.VotedFor = self.ID
 			electionTimer.Reset(utils.RandomDuration())
 			fmt.Printf("Node '%v' timedout and became CANDIDATE with term %v\n", self.ID, self.CurrentTerm)
-			go func() { requestVoteC <- RequestVoteRPC{self.CurrentTerm, self.ID, voteReplyC} }()
+			go func(term int, id int, c chan RequestVoteRPCReply) {
+				requestVoteC <- RequestVoteRPC{term, id, c}
+			}(self.CurrentTerm, self.ID, voteReplyC)
+		default:
 		}
 	}
 }
@@ -123,12 +127,56 @@ func main() {
 	// var clusterC = make(chan rpc)
 	// go node(clusterC)
 	var s string
-	var appendEntriesC = make(chan AppendEntriesRPC)
-	var requestVoteC = make(chan RequestVoteRPC)
-	var c = 4
+	// var appendEntriesC = make(chan AppendEntriesRPC)
+	// var requestVoteC = make(chan RequestVoteRPC)
+	var c = 3
 
-	for index := 1; index <= c; index++ {
-		go node(index, appendEntriesC, requestVoteC, c)
+	// for index := 1; index <= c; index++ {
+	// 	go node(index, appendEntriesC, requestVoteC, c)
+	// }
+
+	var raft = func(global chan string, id int) {
+		fmt.Printf("Node %v\n", id)
+		for {
+			select {
+			case <-global:
+				fmt.Printf("Node %v got message from com0\n", id)
+			default:
+			}
+		}
+	}
+
+	var unit = func(id int, global chan string) chan string {
+		var self = make(chan string)
+		go raft(self, id)
+		return self
+	}
+
+	var com0 = make(chan string)
+	var peersChans = make([]chan string, c)
+
+	for index := range peersChans {
+		peersChans[index] = unit(index+1, com0)
+	}
+
+	var broadCast = func() {
+		for {
+			select {
+			case <-com0:
+				for _, peerChan := range peersChans {
+					go func(pc chan string) { pc <- "" }(peerChan)
+				}
+			default:
+			}
+		}
+	}
+
+	go broadCast()
+
+	paceMaker := time.NewTicker(time.Millisecond * 3000)
+	for _ = range paceMaker.C {
+		fmt.Println("TIMEOUT")
+		go func() { com0 <- "foo" }()
 	}
 
 	fmt.Scanln(&s)
