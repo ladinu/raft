@@ -129,55 +129,84 @@ func main() {
 	var s string
 	// var appendEntriesC = make(chan AppendEntriesRPC)
 	// var requestVoteC = make(chan RequestVoteRPC)
-	var c = 3
+	var c = 5
 
 	// for index := 1; index <= c; index++ {
 	// 	go node(index, appendEntriesC, requestVoteC, c)
 	// }
+	var cluster = utils.MakeCluster(c)
 
-	var raft = func(global chan string, id int) {
-		fmt.Printf("Node %v\n", id)
+	var raft = func(id int, voteC chan utils.RequestVote, appendC chan utils.AppendEntries, cluster *utils.Cluster) {
+		fmt.Printf("RNode %v\n", id)
+		var electionTimer = time.NewTimer(utils.RandomDuration())
 		for {
 			select {
-			case <-global:
-				fmt.Printf("Node %v got message from com0\n", id)
+			case msg := <-voteC:
+				fmt.Printf("Vote request from %v\n", msg.CandidateID)
+			case <-electionTimer.C:
+				fmt.Printf("RNode %v TIMEOUT\n", id)
+				cluster.RequestVotes(id, utils.RequestVote{0, id, make(chan utils.RequestVoteReplyC)})
+				electionTimer.Reset(utils.RandomDuration())
 			default:
 			}
 		}
 	}
 
-	var unit = func(id int, global chan string) chan string {
-		var self = make(chan string)
-		go raft(self, id)
-		return self
+	var node = func(id int, c *utils.Cluster) utils.NodeChan {
+		var requestVoteC = make(chan utils.RequestVote)
+		var appendEntriesC = make(chan utils.AppendEntries)
+		var nodeChan = utils.NodeChan{id, requestVoteC, appendEntriesC}
+		go raft(id, requestVoteC, appendEntriesC, cluster)
+		return nodeChan
 	}
 
-	var com0 = make(chan string)
-	var peersChans = make([]chan string, c)
-
-	for index := range peersChans {
-		peersChans[index] = unit(index+1, com0)
+	for idx := 0; idx < c; idx++ {
+		cluster.Join(node(idx, cluster))
 	}
 
-	var broadCast = func() {
-		for {
-			select {
-			case <-com0:
-				for _, peerChan := range peersChans {
-					go func(pc chan string) { pc <- "" }(peerChan)
-				}
-			default:
-			}
-		}
-	}
-
-	go broadCast()
-
-	paceMaker := time.NewTicker(time.Millisecond * 3000)
-	for _ = range paceMaker.C {
-		fmt.Println("TIMEOUT")
-		go func() { com0 <- "foo" }()
-	}
+	// var raft = func(global chan string, id int) {
+	// 	fmt.Printf("Node %v\n", id)
+	// 	for {
+	// 		select {
+	// 		case <-global:
+	// 			fmt.Printf("Node %v got message from com0\n", id)
+	// 		default:
+	// 		}
+	// 	}
+	// }
+	//
+	// var unit = func(id int, global chan string) chan string {
+	// 	var self = make(chan string)
+	// 	go raft(self, id)
+	// 	return self
+	// }
+	//
+	// var com0 = make(chan string)
+	// var peersChans = make([]chan string, c)
+	//
+	// for index := range peersChans {
+	// 	peersChans[index] = unit(index+1, com0)
+	// }
+	//
+	// var broadCast = func() {
+	// 	for {
+	// 		select {
+	// 		case <-com0:
+	// 			for _, peerChan := range peersChans {
+	// 				go func(pc chan string) { pc <- "" }(peerChan)
+	// 			}
+	// 		default:
+	// 		}
+	// 	}
+	// }
+	//
+	// go broadCast()
+	//
+	// paceMaker := time.NewTicker(time.Millisecond * 3000)
+	// for _ = range paceMaker.C {
+	// 	fmt.Println("TIMEOUT")
+	// 	go func() { com0 <- "foo" }()
+	// }
 
 	fmt.Scanln(&s)
 }

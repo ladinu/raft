@@ -19,11 +19,11 @@ func RandomDuration() time.Duration {
 type RequestVote struct {
 	Term        int
 	CandidateID int
-	ReplyChan   chan RequestVoteRPCReply
+	ReplyChan   chan RequestVoteReplyC
 }
 
-// RequestVoteRPCReply struct
-type RequestVoteRPCReply struct {
+// RequestVoteReplyC struct
+type RequestVoteReplyC struct {
 	Term        int
 	VoteGranted bool
 }
@@ -90,8 +90,8 @@ func (c *Cluster) Join(nc NodeChan) {
 	c.NodeChanMap[nc.NodeID] = nc
 }
 
-// AskForVotes broadcast ReequestVote messages to cluster
-func (c *Cluster) AskForVotes(nodeID int, rv RequestVote) {
+// RequestVotes broadcast ReequestVote messages to cluster
+func (c *Cluster) RequestVotes(nodeID int, rv RequestVote) {
 	c._clusterVoteC <- clusterVote{nodeID, rv}
 }
 
