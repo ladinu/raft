@@ -12,7 +12,7 @@ func randRange(min, max int) int {
 
 // RandomDuration returns a random duration between 150 and 350 milliseconds
 func RandomDuration() time.Duration {
-	return time.Duration(randRange(5000, 7000)) * time.Millisecond
+	return time.Duration(randRange(3000, 5000)) * time.Millisecond
 }
 
 // RequestVote struct

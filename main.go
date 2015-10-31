@@ -33,7 +33,7 @@ func raft(id int, voteC chan utils.RequestVote, appendC chan utils.AppendEntries
 		select {
 		case msg := <-appendC:
 			// fmt.Printf("RNode: %v, Ping from %v with term %v\n", self.ID, msg.LeaderID, msg.Term)
-			if msg.Term > self.CurrentTerm {
+			if msg.Term >= self.CurrentTerm {
 				self.CurrentTerm = msg.Term
 				if self.State != follower {
 					self.State = follower
